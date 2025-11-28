@@ -1,0 +1,12 @@
+文件说明：
+oneLayer_data 不同动量下单层探测器的效率
+    efficiency.root 原始数据
+    Filter.cc 滤波算法
+    efficiency_filtered.root 滤波后的数据
+    interpolate.cc 插值算法
+    interpolate.root 插值后的数据
+efficiency_xxxMeV.root 不同动量下，不同探测器组合的数据，包括使用1/2/3/4层探测器的数据，可参考ppt
+efficiency_use_inner_layer.root 该图中横轴为动量，纵轴为只使用LayerID<y的探测器，其中探测器的ID从0开始，探测器总数为61层，即最大ID为60
+efficiency_use_outer_layer.root 该图中横轴为动量，纵轴为只使用LayerID>=y的探测器
+
+其中root文件需要使用ROOT软件打开，网址：https://root.cern/
