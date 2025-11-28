@@ -1,0 +1,34 @@
+2025-11-28 15:35:29,634 - INFO - Using device: cuda
+2025-11-28 15:35:29,634 - INFO - Loading training data...
+2025-11-28 15:35:29,677 - INFO - Training data samples: 1770
+2025-11-28 15:35:29,677 - INFO - Loading test data...
+2025-11-28 15:35:29,683 - INFO - Test data samples: 240
+2025-11-28 15:35:29,684 - INFO - Train samples: 1593, Val samples: 177, Test samples: 240
+2025-11-28 15:35:30,325 - INFO - Model parameters: 995,265
+2025-11-28 15:35:30,561 - INFO - Starting training...
+2025-11-28 15:36:20,103 - INFO - Epoch  10/200: Train Loss: 0.009484, Val Loss: 0.004936, Val MAE: 0.050716, Best MAE: 0.050716, LR: 0.001000
+2025-11-28 15:36:44,521 - INFO - Epoch  20/200: Train Loss: 0.005281, Val Loss: 0.003526, Val MAE: 0.041867, Best MAE: 0.041867, LR: 0.001000
+2025-11-28 15:37:14,619 - INFO - Epoch  30/200: Train Loss: 0.004217, Val Loss: 0.002781, Val MAE: 0.036749, Best MAE: 0.036672, LR: 0.001000
+2025-11-28 15:37:50,621 - INFO - Epoch  40/200: Train Loss: 0.002824, Val Loss: 0.002475, Val MAE: 0.032650, Best MAE: 0.032650, LR: 0.000500
+2025-11-28 15:38:23,861 - INFO - Epoch  50/200: Train Loss: 0.002875, Val Loss: 0.002507, Val MAE: 0.038671, Best MAE: 0.024555, LR: 0.000500
+2025-11-28 15:38:38,095 - INFO - Epoch  60/200: Train Loss: 0.002223, Val Loss: 0.001720, Val MAE: 0.028485, Best MAE: 0.024555, LR: 0.000500
+2025-11-28 15:39:01,560 - INFO - Epoch  70/200: Train Loss: 0.001969, Val Loss: 0.002748, Val MAE: 0.041927, Best MAE: 0.023405, LR: 0.000500
+2025-11-28 15:39:15,934 - INFO - Epoch  80/200: Train Loss: 0.002553, Val Loss: 0.003719, Val MAE: 0.034581, Best MAE: 0.023405, LR: 0.000500
+2025-11-28 15:39:30,164 - INFO - Epoch  90/200: Train Loss: 0.001625, Val Loss: 0.001511, Val MAE: 0.023558, Best MAE: 0.023371, LR: 0.000250
+2025-11-28 15:39:53,733 - INFO - Epoch 100/200: Train Loss: 0.001408, Val Loss: 0.001116, Val MAE: 0.022652, Best MAE: 0.021294, LR: 0.000250
+2025-11-28 15:40:14,911 - INFO - Epoch 110/200: Train Loss: 0.001335, Val Loss: 0.001108, Val MAE: 0.020946, Best MAE: 0.020160, LR: 0.000250
+2025-11-28 15:40:34,082 - INFO - Epoch 120/200: Train Loss: 0.001148, Val Loss: 0.001102, Val MAE: 0.021358, Best MAE: 0.018767, LR: 0.000125
+2025-11-28 15:40:51,011 - INFO - Epoch 130/200: Train Loss: 0.001093, Val Loss: 0.001492, Val MAE: 0.022111, Best MAE: 0.018466, LR: 0.000125
+2025-11-28 15:41:11,635 - INFO - Epoch 140/200: Train Loss: 0.001044, Val Loss: 0.001246, Val MAE: 0.020955, Best MAE: 0.018082, LR: 0.000063
+2025-11-28 15:41:35,363 - INFO - Epoch 150/200: Train Loss: 0.000990, Val Loss: 0.001142, Val MAE: 0.017479, Best MAE: 0.017190, LR: 0.000031
+2025-11-28 15:41:50,086 - INFO - Epoch 160/200: Train Loss: 0.000977, Val Loss: 0.001084, Val MAE: 0.017867, Best MAE: 0.017008, LR: 0.000016
+2025-11-28 15:42:07,679 - INFO - Epoch 170/200: Train Loss: 0.000970, Val Loss: 0.001088, Val MAE: 0.016736, Best MAE: 0.016606, LR: 0.000008
+2025-11-28 15:42:23,221 - INFO - Epoch 180/200: Train Loss: 0.000913, Val Loss: 0.001104, Val MAE: 0.017033, Best MAE: 0.016606, LR: 0.000004
+2025-11-28 15:42:33,542 - INFO - Epoch 190/200: Train Loss: 0.000957, Val Loss: 0.001073, Val MAE: 0.016752, Best MAE: 0.016606, LR: 0.000004
+2025-11-28 15:42:49,734 - INFO - Epoch 200/200: Train Loss: 0.000878, Val Loss: 0.001081, Val MAE: 0.016893, Best MAE: 0.016606, LR: 0.000002
+2025-11-28 15:42:49,735 - INFO - Training completed! Best Val MAE: 0.016606
+2025-11-28 15:42:49,735 - INFO - Plotting training curves...
+2025-11-28 15:42:50,602 - INFO - ============================================================
+2025-11-28 15:42:50,602 - INFO - Loading best model for final evaluation on test set...
+2025-11-28 15:42:50,652 - INFO - Final Val Loss: 0.001068, Final Val MAE: 0.016606
+2025-11-28 15:42:50,652 - INFO - Final Test Loss: 0.043682, Final Test MAE: 0.165891

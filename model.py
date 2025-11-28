@@ -1,171 +1,112 @@
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+import torch.nn.functional as F
 import numpy as np
-from data import load_efficiency_data
-
-class EfficiencyDataset(Dataset):
-    def __init__(self, x, y):
-        self.X = x   # shape (N, 62)
-        self.Y = y   # shape (N,) or (N,1)
-
-        if self.Y.ndim == 1:
-            self.Y = self.Y[:, None]  # 变成 (N, 1)
-
-        # 转成 torch 张量
-        self.X = torch.tensor(self.X, dtype=torch.float32)
-        self.Y = torch.tensor(self.Y, dtype=torch.float32)
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        return self.X[idx], self.Y[idx]
 
 
-class EfficiencyMLP(nn.Module):
-    def __init__(self):
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=61):
         super().__init__()
-
-        self.model = nn.Sequential(
-            nn.Linear(62, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Linear(32, 1)     # 输出一个标量效率
-        )
-
-    def forward(self, x):
-        return self.model(x)
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-np.log(10000.0) / d_model))
+        pe = torch.zeros(1, max_len, d_model)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
     
-# 替换原来的数据加载与 DataLoader 创建为下面内容（添加验证集划分）
-# train_x,train_y = load_efficiency_data()
-X, y = load_efficiency_data()
+    def forward(self, x):
+        return x + self.pe[:, :x.size(1)]
 
-# 划分训练集 / 验证集 / 测试集
-val_ratio = 0.1
-test_ratio = 0.1
-rng = np.random.default_rng(42)
-idx = rng.permutation(len(X))
 
-n_train = int(len(X) * (1 - val_ratio - test_ratio))
-n_val = int(len(X) * val_ratio)
-
-train_idx = idx[:n_train]
-val_idx = idx[n_train:n_train + n_val]
-test_idx = idx[n_train + n_val:]
-
-train_x, train_y = X[train_idx], y[train_idx]
-val_x, val_y = X[val_idx], y[val_idx]
-test_x, test_y = X[test_idx], y[test_idx]
-
-train_dataset = EfficiencyDataset(train_x, train_y)
-val_dataset = EfficiencyDataset(val_x, val_y)
-test_dataset = EfficiencyDataset(test_x, test_y)
-
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
-test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model = EfficiencyMLP().to(device)
-
-criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
-EPOCHS = 200
-
-# 添加用于保存最优模型的变量
-best_val = float("inf")
-
-for epoch in range(EPOCHS):
-    model.train()
-    total_loss = 0
-
-    for x_batch, y_batch in train_loader:
-        x_batch = x_batch.to(device)
-        y_batch = y_batch.to(device)
-
-        optimizer.zero_grad()
+class DetectorEfficiencyTransformer(nn.Module):
+    def __init__(
+        self, 
+        d_model=128, 
+        nhead=8, 
+        num_layers=4, 
+        dim_feedforward=512,
+        dropout=0.1
+    ):
+        super().__init__()
+        self.d_model = d_model
         
-        pred = model(x_batch)
+        # 特征嵌入层：将单层效率和位置信息映射到 d_model 维度
+        self.efficiency_embedding = nn.Linear(1, d_model // 2)
+        self.position_embedding = nn.Embedding(61, d_model // 2)
+        
+        # 动量嵌入层
+        self.momentum_embedding = nn.Linear(1, d_model)
+        
+        # 位置编码
+        self.pos_encoder = PositionalEncoding(d_model, max_len=62)  # 61 + 1 (momentum token)
+        
+        # Transformer 编码器
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True,
+            norm_first=True
+        )
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer, 
+            num_layers=num_layers
+        )
+        
+        # 输出层
+        self.output_mlp = nn.Sequential(
+            nn.Linear(d_model, dim_feedforward),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(dim_feedforward, dim_feedforward // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(dim_feedforward // 2, 1)
+        )
+        
+        # Layer normalization
+        self.layer_norm = nn.LayerNorm(d_model)
+    
+    def forward(self, pos_mask, efficiency, momentum):
+        """
+        Args:
+            pos_mask: [batch_size, 61] - 布尔掩码，标记哪些位置有探测器
+            efficiency: [batch_size, 61] - 每个位置的单层效率
+            momentum: [batch_size, 1] - 粒子动量
+        """
+        batch_size = pos_mask.size(0)
+        
+        position_ids = torch.arange(61, device=pos_mask.device).unsqueeze(0).expand(batch_size, -1)
+        pos_embed = self.position_embedding(position_ids)
 
-        loss = criterion(pred, y_batch)
-        loss.backward()
-        optimizer.step()
-
-        total_loss += loss.item() * len(x_batch)
-
-    avg_loss = total_loss / len(train_dataset)
-
-    # 计算验证集损失
-    model.eval()
-    val_total = 0
-    with torch.no_grad():
-        for x_val, y_val in val_loader:
-            x_val = x_val.to(device)
-            y_val = y_val.to(device)
-            pred_val = model(x_val)
-            loss_val = criterion(pred_val, y_val)
-            val_total += loss_val.item() * len(x_val)
-    avg_val = val_total / len(val_dataset)
-
-    print(f"Epoch {epoch+1}/{EPOCHS}, Train Loss = {avg_loss:.6f}, Val Loss = {avg_val:.6f}")
-
-    # 保存验证集上最好的模型
-    if avg_val < best_val:
-        best_val = avg_val
-        torch.save(model.state_dict(), "efficiency_mlp_best.pth")
-        print(f"验证集损失改善，已保存模型：efficiency_mlp_best.pth")
-
-# 可选：保存训练结束时的最终模型（保持兼容）
-torch.save(model.state_dict(), "efficiency_mlp.pth")
-print("最终模型已保存为 efficiency_mlp.pth；验证集上最佳模型为 efficiency_mlp_best.pth")
-
-# 使用在验证集上最好的模型在测试集上评估
-# 加载最佳模型
-best_path = "efficiency_mlp_best.pth"
-model.load_state_dict(torch.load(best_path, map_location=device))
-model.eval()
-
-test_total = 0.0
-mae_total = 0.0
-criterion_mae = nn.L1Loss(reduction='sum')
-
-with torch.no_grad():
-    for x_test, y_test in test_loader:
-        x_test = x_test.to(device)
-        y_test = y_test.to(device)
-        pred_test = model(x_test)
-        loss_test = criterion(pred_test, y_test)  # MSE sum already handled below
-        test_total += loss_test.item() * len(x_test) / (len(x_test))  # accumulate per-batch MSE mean
-        mae_total += criterion_mae(pred_test, y_test).item()
-
-# 计算平均 MSE（按样本）和 MAE
-avg_test_mse = 0.0
-# 为了精确按样本平均，重新计算基于 dataset 长度
-with torch.no_grad():
-    mse_sum = 0.0
-    for x_test, y_test in test_loader:
-        x_test = x_test.to(device)
-        y_test = y_test.to(device)
-        pred_test = model(x_test)
-        mse_sum += nn.functional.mse_loss(pred_test, y_test, reduction='sum').item()
-    avg_test_mse = mse_sum / len(test_dataset)
-
-avg_test_mae = mae_total / len(test_dataset)
-
-print(f"Test MSE = {avg_test_mse:.6f}, Test MAE = {avg_test_mae:.6f}")
-
-# 新增：打印部分测试样本的预测与真值
-n_show = min(10, len(test_dataset))
-print(f"\n显示 {n_show} 个测试样本的预测 vs 真值（pred -> true）:")
-for i in range(n_show):
-    x_s, y_s = test_dataset[i]               # 返回 CPU tensor
-    x_s = x_s.unsqueeze(0).to(device)
-    with torch.no_grad():
-        pred_s = model(x_s).squeeze().cpu().item()
-    true_s = y_s.squeeze().cpu().item()
-    print(f"样本 {i+1}: {pred_s:.6f} -> {true_s:.6f}")
+        eff_embed = self.efficiency_embedding(efficiency.unsqueeze(-1))
+        
+        # 拼接效率和位置嵌入 [batch_size, 61, d_model]
+        detector_tokens = torch.cat([eff_embed, pos_embed], dim=-1)
+        
+        # 创建动量 token [batch_size, 1, d_model]
+        momentum_token = self.momentum_embedding(momentum).unsqueeze(1)
+        
+        # 拼接所有 tokens [batch_size, 62, d_model]
+        tokens = torch.cat([momentum_token, detector_tokens], dim=1)
+        
+        # 添加位置编码
+        tokens = self.pos_encoder(tokens)
+        tokens = self.layer_norm(tokens)
+        
+        # 创建注意力掩码：动量token可以关注所有位置，探测器token只在有探测器的位置可见
+        src_key_padding_mask = torch.ones(batch_size, 62, dtype=torch.bool, device=pos_mask.device)
+        src_key_padding_mask[:, 0] = False
+        src_key_padding_mask[:, 1:] = ~pos_mask
+        
+        encoded = self.transformer_encoder(
+            tokens, 
+            src_key_padding_mask=src_key_padding_mask
+        )
+        
+        # 使用动量 token 的输出作为全局表示
+        global_repr = encoded[:, 0, :]
+        output = self.output_mlp(global_repr)
+        
+        return output.squeeze(-1)
