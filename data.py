@@ -66,7 +66,7 @@ def process_efficiency_data(filepath):
                 if any(positions >= 61):
                     continue
                 datas.append({"pos_feature": positions, "momentum": momentum,
-                             "label": values[binX-1, binY-1, binZ-1]})
+                             "label": values[binX-1, binY, binZ-1]})
     return datas
 
 

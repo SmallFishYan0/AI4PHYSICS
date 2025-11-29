@@ -1,13 +1,35 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import random
+import os
 import logging
 import matplotlib.pyplot as plt
-from torch.utils.data import  DataLoader
+from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from data import load_efficiency_data
 from data import DetectorDataset
 from model import DetectorEfficiencyTransformer
+
+
+def setup_seed(seed=42):
+    random.seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    
+    # 保证 CUDA 算法的确定性
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
+def seed_worker(worker_id):
+    """DataLoader 的 worker 初始化函数"""
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 
 def setup_logger():
@@ -101,8 +123,12 @@ def evaluate(model, dataloader, criterion, device):
 
 
 def main():
-    torch.manual_seed(42)
-    np.random.seed(42)
+    # 设置全局随机种子
+    setup_seed(42)
+    
+    # 创建一个 Generator 用于 DataLoader
+    g = torch.Generator()
+    g.manual_seed(42)
     
     logger = setup_logger()
     
@@ -129,13 +155,32 @@ def main():
     val_dataset = DetectorDataset(val_data)
     test_dataset = DetectorDataset(test_data_list)
     
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    # 在 DataLoader 中加入 worker_init_fn 和 generator
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=32, 
+        shuffle=True,
+        worker_init_fn=seed_worker,
+        generator=g
+    )
+    val_loader = DataLoader(
+        val_dataset, 
+        batch_size=32, 
+        shuffle=False,
+        worker_init_fn=seed_worker,
+        generator=g
+    )
+    test_loader = DataLoader(
+        test_dataset, 
+        batch_size=32, 
+        shuffle=False,
+        worker_init_fn=seed_worker,
+        generator=g
+    )
     
     # 创建模型
     model = DetectorEfficiencyTransformer(
-        d_model=128,
+        d_model=64,
         nhead=8,
         num_layers=4,
         dim_feedforward=512,
@@ -152,7 +197,7 @@ def main():
     )
     
     # 训练循环
-    num_epochs = 200
+    num_epochs = 150
     best_val_mae = float('inf')
     train_losses = []
     val_losses = []
