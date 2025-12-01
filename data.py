@@ -42,8 +42,8 @@ def filter_values_3d(values):
     return values_out
 
 
-def process_efficiency_data(filepath):
-    '''构造单个文件的训练数据（不包含单层效率特征）'''
+def process_MeV_data(filepath):
+    '''从efficency_xxxMeV.root文件中提取训练数据：结构、动量和真值'''
     m = re.search(r'(\d+)MeV', os.path.basename(filepath))
     momentum = int(m.group(1)) if m else 0
     f = uproot.open(filepath)
@@ -70,40 +70,68 @@ def process_efficiency_data(filepath):
     return datas
 
 
-def find_efficiency(one_layer_path, datas):
-    '''查询给定探测器结构的单层效率特征'''
+def process_inout_data(filepath, inner=True):
+    '''从inner/outer文件中提取训练数据：结构、动量和真值'''
+    f = uproot.open(filepath)
+    h = f["colz"]
+    values = h.values()
+    x_axis = h.axes[0].edges()
+    x_axis = (x_axis[:-1] + x_axis[1:]) / 2
+    y_axis = h.axes[1].edges()
+    y_axis = y_axis[:-1]
+    datas = []
+    for momentum in x_axis:
+        for y in y_axis:
+            binX = get_bin_index(x_axis, momentum)
+            binY = get_bin_index(y_axis, y)
+            if inner:
+                positions = np.arange(0, int(y))
+            else:
+                positions = np.arange(int(y), 61)
+            if any(positions >= 61):
+                continue
+            datas.append({"pos_feature": positions, "momentum": momentum,
+                            "label": values[binX-1, binY-1]})
+    return datas
+
+
+def find_single_efficiency(one_layer_path, pos_feature, momentum):
+    '''给定探测器结构和动量，查询单层效率特征'''
     f = uproot.open(one_layer_path)
     h_one_layer = f['h_out']
     values_one_layer = h_one_layer.values()
     x_axis_one_layer = h_one_layer.axes[0].edges()
-    x_axis_one_layer = np.array([int(i) + 25 for i in x_axis_one_layer][:-1])
+    x_axis_one_layer = np.array(x_axis_one_layer)
+    x_axis_one_layer = (x_axis_one_layer[:-1] + x_axis_one_layer[1:]) / 2
     y_axis_one_layer = np.array(h_one_layer.axes[1].edges()[:-1])
 
-    final_datas = []
-    for data in datas:
-        m = data["momentum"]
-        pos_feature = data["pos_feature"]
-        efficiency_feature = values_one_layer[x_axis_one_layer == m].squeeze()
-        efficiency_feature = efficiency_feature[pos_feature]
-        final_datas.append({
-            "pos_feature": data["pos_feature"], 
-            "efficiency_feature": efficiency_feature, 
-            "momentum": data["momentum"], 
-            "label": data["label"]
-        })
-
-    return final_datas
+    efficiency_feature = values_one_layer[x_axis_one_layer == momentum].squeeze()
+    efficiency_feature = efficiency_feature[pos_feature]
+    return efficiency_feature
 
 
 def load_efficiency_data(file_paths: list):
+    '''提取给定root文件中的训练数据'''
     one_layer_path = "raw_data/oneLayer_data/efficiency_filtered.root"
 
     datas = []
-    for file in file_paths:
-        if "efficiency" in file:
-            datas_tmp = process_efficiency_data(os.path.join("raw_data", file))
-            datas_tmp = find_efficiency(one_layer_path, datas_tmp)
-            datas.extend(datas_tmp)
+    for file_path in file_paths:
+
+        if "MeV" in file_path:
+            datas_tmp = process_MeV_data(os.path.join("raw_data", file_path))
+        else:
+            if "inner" in file_path:
+                datas_tmp = process_inout_data(os.path.join("raw_data", file_path), inner=True)
+            else:
+                datas_tmp = process_inout_data(os.path.join("raw_data", file_path), inner=False)
+
+        for data in datas_tmp:
+            pos_feature = data['pos_feature']
+            momentum = data['momentum']
+            data['efficiency_feature'] = find_single_efficiency(
+                one_layer_path, pos_feature, momentum
+            )
+        datas.extend(datas_tmp)
 
     return datas
 

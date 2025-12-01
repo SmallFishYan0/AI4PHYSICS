@@ -137,7 +137,16 @@ def main():
     
     # 加载训练数据（除了700MeV）
     logger.info("Loading training data...")
-    train_efficiency_filepaths = ["efficiency_500MeV.root", "efficiency_600MeV.root", "efficiency_800MeV.root", "efficiency_1000MeV.root", "efficiency_1200MeV.root", "efficiency_1500MeV.root"]
+    train_efficiency_filepaths = [
+        "efficiency_500MeV.root", 
+        "efficiency_600MeV.root", 
+        "efficiency_800MeV.root", 
+        "efficiency_1000MeV.root", 
+        "efficiency_1200MeV.root", 
+        "efficiency_1500MeV.root",
+        "efficiency_use_inner_layer.root",
+        "efficiency_use_outer_layer.root"
+    ]
     train_data_list = load_efficiency_data(train_efficiency_filepaths)
     logger.info(f"Training data samples: {len(train_data_list)}")
     
