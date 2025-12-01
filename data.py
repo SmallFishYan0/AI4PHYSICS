@@ -110,29 +110,25 @@ def find_single_efficiency(one_layer_path, pos_feature, momentum):
     return efficiency_feature
 
 
-def load_efficiency_data(file_paths: list):
+def load_efficiency_data(file_path: list, onelayer_data_dir: str):
     '''提取给定root文件中的训练数据'''
-    one_layer_path = "raw_data/oneLayer_data/efficiency_filtered.root"
+    one_layer_path = os.path.join(onelayer_data_dir, "efficiency_filtered.root")
 
-    datas = []
-    for file_path in file_paths:
-
-        if "MeV" in file_path:
-            datas_tmp = process_MeV_data(os.path.join("raw_data", file_path))
+    if "MeV" in file_path:
+        datas = process_MeV_data(file_path)
+    else:
+        if "inner" in file_path:
+            datas = process_inout_data(file_path, inner=True)
         else:
-            if "inner" in file_path:
-                datas_tmp = process_inout_data(os.path.join("raw_data", file_path), inner=True)
-            else:
-                datas_tmp = process_inout_data(os.path.join("raw_data", file_path), inner=False)
+            datas = process_inout_data(file_path, inner=False)
 
-        for data in datas_tmp:
-            pos_feature = data['pos_feature']
-            momentum = data['momentum']
-            data['efficiency_feature'] = find_single_efficiency(
-                one_layer_path, pos_feature, momentum
-            )
-        datas.extend(datas_tmp)
-
+    for data in datas:
+        pos_feature = data['pos_feature']
+        momentum = data['momentum']
+        data['efficiency_feature'] = find_single_efficiency(
+            one_layer_path, pos_feature, momentum
+        )
+        
     return datas
 
 

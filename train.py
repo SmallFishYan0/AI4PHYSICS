@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 from data import load_efficiency_data
 from data import DetectorDataset
 from model import DetectorEfficiencyTransformer
+import argparse
 
 
 def setup_seed(seed=42):
@@ -122,7 +123,7 @@ def evaluate(model, dataloader, criterion, device):
     return total_loss / total_samples, total_mae / total_samples
 
 
-def main():
+def main(args):
     # 设置全局随机种子
     setup_seed(42)
     
@@ -135,34 +136,57 @@ def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logger.info(f"Using device: {device}")
     
-    # 加载训练数据（除了700MeV）
-    logger.info("Loading training data...")
+
+    # 加载训练数据：如果要测分布外效果，去除指定的分布外数据；如果使用inner/outer数据则添加
     train_efficiency_filepaths = [
-        "efficiency_500MeV.root", 
-        "efficiency_600MeV.root", 
-        "efficiency_800MeV.root", 
-        "efficiency_1000MeV.root", 
-        "efficiency_1200MeV.root", 
-        "efficiency_1500MeV.root",
-        "efficiency_use_inner_layer.root",
-        "efficiency_use_outer_layer.root"
+        filepath for filepath in [
+            os.path.join(args.train_data_dir, f) for f in os.listdir(args.train_data_dir) if f.endswith('.root')
+        ]
+        if os.path.basename(filepath) not in args.ood_data_names and (args.use_inner_outer or ('inner' not in filepath and 'outer' not in filepath))
     ]
-    train_data_list = load_efficiency_data(train_efficiency_filepaths)
-    logger.info(f"Training data samples: {len(train_data_list)}")
+
+    overall_data_dict = {
+        os.path.basename(filepath): load_efficiency_data(filepath, args.onelayer_data_dir)
+        for filepath in train_efficiency_filepaths
+    }
+
+    # 构造验证集：训练集每个文件抽取10%的数据组成验证集
+    train_data_dict = {}
+    val_data_dict = {}
+    for filename, datas in overall_data_dict.items():
+        train_datas, val_datas = train_test_split(datas, test_size=0.1, random_state=42)
+        train_data_dict[filename] = train_datas
+        val_data_dict[filename] = val_datas
+
+    train_data_list = []
+    for datas in train_data_dict.values():
+        train_data_list.extend(datas)
+
+    val_data_list = []
+    for datas in val_data_dict.values():
+        val_data_list.extend(datas)
+
+    train_dataset = DetectorDataset(train_data_list)
+    val_dataset = DetectorDataset(val_data_list)
     
-    # 加载测试数据（700MeV）
-    logger.info("Loading test data...")
-    test_efficiency_filepaths = ["efficiency_700MeV.root"]
-    test_data_list = load_efficiency_data(test_efficiency_filepaths)
-    logger.info(f"Test data samples: {len(test_data_list)}")
+    # 加载测试数据
+    if args.ood_data_names:
+        test_efficiency_filepaths = [
+            os.path.join(args.train_data_dir, name) for name in args.ood_data_names
+        ]
+        test_data_dict = {
+            os.path.basename(filepath): load_efficiency_data(filepath, args.onelayer_data_dir)
+            for filepath in test_efficiency_filepaths
+        }
+        test_data_list = []
+        for datas in test_data_dict.values():
+            test_data_list.extend(datas)
+        test_dataset = DetectorDataset(test_data_list)
+    else:
+        test_data_dict = val_data_dict
+        test_dataset = val_dataset
     
-    # 将训练数据按9:1划分为训练集和验证集
-    train_data, val_data = train_test_split(train_data_list, test_size=0.1, random_state=42)
-    logger.info(f"Train samples: {len(train_data)}, Val samples: {len(val_data)}, Test samples: {len(test_data_list)}")
-    
-    train_dataset = DetectorDataset(train_data)
-    val_dataset = DetectorDataset(val_data)
-    test_dataset = DetectorDataset(test_data_list)
+    logger.info(f"Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}, Test samples: {len(test_dataset)}")
     
     # 在 DataLoader 中加入 worker_init_fn 和 generator
     train_loader = DataLoader(
@@ -206,7 +230,7 @@ def main():
     )
     
     # 训练循环
-    num_epochs = 150
+    num_epochs = args.epochs
     best_val_mae = float('inf')
     train_losses = []
     val_losses = []
@@ -236,7 +260,7 @@ def main():
     logger.info("Plotting training curves...")
     plot_training_curves(train_losses, val_losses)
     
-    # 在700MeV测试集上进行最终评估
+    # 评估
     logger.info("="*60)
     logger.info("Loading best model for final evaluation on test set...")
     model.load_state_dict(torch.load('best_model.pth'))
@@ -247,5 +271,30 @@ def main():
     logger.info(f"Final Val Loss: {val_loss:.6f}, Final Val MAE: {val_mae:.6f}")
     logger.info(f"Final Test Loss: {test_loss:.6f}, Final Test MAE: {test_mae:.6f}")
 
+    logger.info("Different distribution results:")
+    # 分布评估：对分布外测试，得到训练分布外每个分布的测试结果；对分布内测试，得到训练分布内每个分布的测试结果
+    for name, data in test_data_dict.items():
+        dataset = DetectorDataset(data)
+        loader = DataLoader(
+            dataset, 
+            batch_size=32, 
+            shuffle=False,
+            worker_init_fn=seed_worker,
+            generator=g
+        )
+        loss, mae = evaluate(model, loader, criterion, device)
+        if args.ood_data_names:
+            logger.info(f"OOD Dataset: {name} - Loss: {loss:.6f}, MAE: {mae:.6f}")
+        else:
+            logger.info(f"Dataset: {name} - Loss: {loss:.6f}, MAE: {mae:.6f}")
+
+
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="训练参数")
+    parser.add_argument('--epochs', type=int, default=150, help='训练轮数')
+    parser.add_argument('--train_data_dir', type=str, default="./raw_data", help='训练数据文件路径列表')
+    parser.add_argument('--onelayer_data_dir', type=str, default="./raw_data/oneLayer_data", help='单层效率数据文件路径列表')
+    parser.add_argument('--ood_data_names', nargs='*', default=[], help='分布外数据文件路径列表')
+    parser.add_argument('--use_inner_outer', action='store_true', help='是否使用inner/outer layer数据训练')
+    args = parser.parse_args()
+    main(args)
