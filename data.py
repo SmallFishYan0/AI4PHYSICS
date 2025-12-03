@@ -52,7 +52,7 @@ def process_MeV_data(filepath):
     values = filter_values_3d(values)
     N = values.shape[0]
     x_axis = h.axes[0].edges()[:-1]
-    y_axis = h.axes[1].edges()[1:4]
+    y_axis = h.axes[1].edges()[:-1]
     z_axis = h.axes[2].edges()[:-1]
     datas = []
     for x in x_axis:
@@ -66,7 +66,7 @@ def process_MeV_data(filepath):
                 if any(positions >= 61):
                     continue
                 datas.append({"pos_feature": positions, "momentum": momentum,
-                             "label": values[binX-1, binY, binZ-1]})
+                             "label": values[binX-1, binY-1, binZ-1]})
     return datas
 
 
